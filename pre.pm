@@ -28,6 +28,8 @@ my $COL_STATUS  = 'status';      # 0:pre; 1:nuked; 2:unnuked; 3:delpred; 4:undel
 my $COL_REASON  = 'nukereason';      # reason for nuke/unnuke/delpre/undelpre
 my $COL_GROUP   = 'grp';       # groupname
 
+my $ANNOUNCE_NETWORK = 'ime';
+
 # Module only accessible for users.
 # Comment the next line if you want to make it global accessible
 #sub module_types { $ZNC::CModInfo::UserModule }
@@ -86,7 +88,7 @@ sub OnChanMsg {
 
             # Add Pre
             $self->addPre($pretime, $release, $section, $group);
-            $self->GetUser->FindNetwork("ime")->PutIRC("PRIVMSG #pre :" . $message);
+            $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
         # INFO
         } elsif ($type eq "INFO") {
             # Regex works for a lot of prechans but not for all.
@@ -109,7 +111,7 @@ sub OnChanMsg {
 
             # Add Info
             $self->addInfo($release, $files, $size);
-	    $self->GetUser->FindNetwork("ime")->PutIRC("PRIVMSG #pre :" . $message);
+	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
 
         # NUKE
         } elsif ($type ~~ m/^(NUKE|MODNUKE)/) {
@@ -130,7 +132,7 @@ sub OnChanMsg {
 
             # Nuke
             $self->changeStatus(1, $release, $reason);
-	    $self->GetUser->FindNetwork("ime")->PutIRC("PRIVMSG #pre :" . $message);
+	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
         # UNNUKE
         } elsif ($type eq "UNNUKE") {
             # Regex works for a lot of prechans but not for all.
@@ -152,7 +154,7 @@ sub OnChanMsg {
 
             # Unnuke
             $self->changeStatus(2, $release, $reason);
-	    $self->GetUser->FindNetwork("ime")->PutIRC("PRIVMSG #pre :" . $message);
+	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
         # DELPRE
         } elsif ($type eq "DELPRE") {
             # Regex works for a lot of prechans but not for all.
@@ -174,7 +176,7 @@ sub OnChanMsg {
 
             # Delpre
             $self->changeStatus(3, $release, $reason);
- 	    $self->GetUser->FindNetwork("ime")->PutIRC("PRIVMSG #pre :" . $message);
+ 	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
 
         # UNDELPRE
         } elsif ($type eq "UNDELPRE") {
@@ -197,7 +199,7 @@ sub OnChanMsg {
 
             # Undelpre
             $self->changeStatus(4, $release, $reason);
-            $self->GetUser->FindNetwork("ime")->PutIRC("PRIVMSG #pre :" . $message);
+            $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
         }
     }
 
