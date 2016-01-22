@@ -12,7 +12,10 @@ CREATE TABLE IF NOT EXISTS `releases` (
   `status` int(1) NOT NULL DEFAULT '0',
   `reason` varchar(255) NOT NULL DEFAULT '',
   `group` varchar(30) NOT NULL DEFAULT '',
-  `genre` varchar(20) NOT NULL DEFAULT '',
+  `genre` varchar(30) NOT NULL DEFAULT '',
+  `url` varchar(255) NOT NULL DEFAULT '',
+  `mp3info` varchar(255) NOT NULL DEFAULT '',
+  `videoinfo` varchar(255) NOT NULL DEFAULT '',
   PRIMARY KEY (`ID`),
   UNIQUE KEY `release` (`release`),
   KEY `grp` (`group`)

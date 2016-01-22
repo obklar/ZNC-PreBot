@@ -19,15 +19,18 @@ my $DB_USER     = 'dbuser';      # DB user
 my $DB_PASSWD   = 'dbpassword';      # DB user passwd
 
 # DB Columns
-my $COL_PRETIME = 'ctime';     # pre timestamp
-my $COL_RELEASE = 'rlsname';     # release name
+my $COL_PRETIME = 'pretime';     # pre timestamp
+my $COL_RELEASE = 'release';     # release name
 my $COL_SECTION = 'section';     # section name
 my $COL_FILES   = 'files';       # number of files
 my $COL_SIZE    = 'size';        # release size
 my $COL_STATUS  = 'status';      # 0:pre; 1:nuked; 2:unnuked; 3:delpred; 4:undelpred;
-my $COL_REASON  = 'nukereason';      # reason for nuke/unnuke/delpre/undelpre
-my $COL_GROUP   = 'grp';       # groupname
+my $COL_REASON  = 'reason';      # reason for nuke/unnuke/delpre/undelpre
+my $COL_GROUP   = 'group';       # groupname
 my $COL_GENRE   = 'genre';
+my $COL_URL     = 'url';
+my $COL_MP3INFO = 'mp3info';
+my $COL_VIDEOINFO = 'videoinfo';
 
 my $ANNOUNCE_NETWORK = 'ime';
 
@@ -69,192 +72,239 @@ sub OnChanMsg {
         # Compare different types of announces,
         # assuming that there are common types like pre, (mod)nuke, unnuke, delpre, undelpre
 
-        #PRE
-        if ($type eq "PRE") {
-            # Regex works for a lot of prechans but not for all.
-            # Maybe you have to change this.
-            # Order: PRE SECTION RELEASE
-            $match = $message ~~ m/^\W*\w+\W+(\w+-?\w+)\W+(\w.+?)\W*$/;
+        # ADDPRE / SITEPRE
+        if ($type eq "ADDPRE" || $type eq "SITEPRE") {
+              # Regex works for a lot of prechans but not for all.
+              # Maybe you have to change this.
+              # Order: PRE SECTION RELEASE
+              $match = $message ~~ m/^\W*\w+\W+(\w+-?\w+)\W+(\w.+?)\W*$/;
 
-            # Get Regex matches
-            my $pretime = time();
-            my $section = $1;
-            my $release = $2;
-            # Get Group from release
-            $match = $release ~~ m/-(\w+)$/;
-            my $group = $1;
+              # Get Regex matches
+              my $pretime = time();
+              my $section = $1;
+              my $release = $2;
+              # Get Group from release
+              $match = $release ~~ m/-(\w+)$/;
+              my $group = $1;
 
-            # DEBUG -> are all the matches correct?
-            #$self->PutModule($type.": ".$section." > ".$release." - ".$group);
+              # DEBUG -> are all the matches correct?
+              #$self->PutModule($type.": ".$section." > ".$release." - ".$group);
 
-            # Add Pre
-            $self->addPre($pretime, $release, $section, $group);
-            $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+              # Add Pre
+              $self->addPre($pretime, $release, $section, $group);
+              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+        # ADDOLD
+        } elsif ($type eq "ADDOLD") {
+              print $message;
+              my @array = split / /, $message;
+              print "@array\n";
+              my $release = returnEmptyIfDash($array[1]);
+              my $section = returnEmptyIfDash($array[2]);
+              my $pretime = returnEmptyIfDash($array[3]);
+              my $size    = returnEmptyIfDash($array[4]);
+              my $files   = returnEmptyIfDash($array[5]);
+              my $genre   = returnEmptyIfDash($array[6]);
+              my $additional = returnEmptyIfDash($array[7]);
+
+              # Get Group from release
+              $match = $release ~~ m/-(\w+)$/;
+              my $group = $1;
+              print "\nxxx$release\n";
+              # DEBUG -> are all the matches correct?
+              #$self->PutModule($type.": ".$section." > ".$release." - ".$group);
+
+              # Add Pre
+              $self->addPre($pretime, $release, $section, $group);
+              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+
+              # Add Info
+              $self->addInfo($release, $files, $size);
+
+              # Add genre
+              $self->addGenre($release, $genre);
+
         # INFO
         } elsif ($type eq "INFO") {
-            # Regex works for a lot of prechans but not for all.
-            # Maybe you have to change this.
-            # Order: INFO RELEASE 1 FILES 1 SIZE
-      	    $message =~ s/[[\]]//g;
-      	    my @array1 = split ' ',   $message;
-      	    #$self->PutModule("message: " . $message);
-      	    $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\d+\s\w+?)\W*(\d.+?)\W*$/;
+              # Regex works for a lot of prechans but not for all.
+              # Maybe you have to change this.
+              # Order: INFO RELEASE 1 FILES 1 SIZE
+        	    $message =~ s/[[\]]//g;
+        	    my @array1 = split ' ',   $message;
+        	    #$self->PutModule("message: " . $message);
+        	    $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\d+\s\w+?)\W*(\d.+?)\W*$/;
 
-      	    # Get Regex Matches
-            my $release = $array1[1];
-            my $files = $array1[2];
-      	    $files =~ s/F//g;
-            my $size = $array1[3];
-      	    $size =~ s/MB//g;
+        	    # Get Regex Matches
+              my $release = $array1[1];
+              my $files = $array1[2];
+        	    $files =~ s/F//g;
+              my $size = $array1[3];
+        	    $size =~ s/MB//g;
 
-            # DEBUG -> are all the matches correct?
-            $self->PutModule("Atype: " . $type. " release: ".$release." files: ".$files." - size:".$size);
+              # DEBUG -> are all the matches correct?
+              $self->PutModule("Atype: " . $type. " release: ".$release." files: ".$files." - size:".$size);
 
-            # Add Info
-            $self->addInfo($release, $files, $size);
-      	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+              # Add Info
+              $self->addInfo($release, $files, $size);
+        	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+
+        # GENRE
+        } elsif ($type eq "GN") {
+              my @array = split / /, $message;
+
+              my $release = $array[1];
+              my $genre   = $array[2];
+
+              # DEBUG -> are all the matches correct?
+              $self->PutModule("Genre: " . $type. " release: ".$release." genre: ".$genre);
+
+              # Add Info
+              $self->addGenre($release, $genre);
+        	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+
+        # ADDURL
+        } elsif ($type eq "ADDURL") {
+              my @array = split / /, $message;
+
+              my $release = $array[1];
+              my $url   = $array[2];
+
+              # DEBUG -> are all the matches correct?
+              $self->PutModule("Url: " . $type. " release: ".$release." url: ".$url);
+
+              # Add Info
+              $self->addUrl($release, $url);
+              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+
+        # ADDMP3INFO
+        } elsif( $type eq "MP3INFO") {
+          my @array = split / /, $message;
+
+          my $release = $array[1];
+          my $mp3info   = $array[2];
+
+          # DEBUG -> are all the matches correct?
+          $self->PutModule("MP3Info: " . $type. " release: ".$release." mp3info: ".$mp3info);
+
+          # Add Info
+          $self->addMp3info($release, $mp3info);
+          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+
+        # ADDVIDEOINFO
+        } elsif( $type eq "VIDEOINFO") {
+          my @array = split / /, $message;
+
+          my $release = $array[1];
+          my $videoinfo   = $array[2];
+
+          # DEBUG -> are all the matches correct?
+          $self->PutModule("VideoInfo: " . $type. " release: ".$release." videoinfo: ".$videoinfo);
+
+          # Add Info
+          $self->addVideoinfo($release, $videoinfo);
+          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
 
         # NUKE
         } elsif ($type ~~ m/^(NUKE|MODNUKE)/) {
-            my @array = split / /, $message;
-      	    pop @array; # get rid of the last array element on right
-      	    $message = join(' ', @array);
+              my @array = split / /, $message;
+        	    pop @array; # get rid of the last array element on right
+        	    $message = join(' ', @array);
 
-      	    # Regex works for a lot of prechans but not for all.
-            # Maybe you have to customize this.
-            # Order: NUKE RELEASE REASON
-            $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
-            # Get Regex Matches
-            my $release = $1;
-            my $reason = $2;
+    	        # Regex works for a lot of prechans but not for all.
+              # Maybe you have to customize this.
+              # Order: NUKE RELEASE REASON
+              $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
+              # Get Regex Matches
+              my $release = $1;
+              my $reason = $2;
+              # DEBUG -> are all the matches correct?
+              $self->PutModule("tpye" . $type.":".$release." - ".$reason);
+              # Nuke
+              $self->changeStatus(1, $release, $reason);
+    	        $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
 
-            # DEBUG -> are all the matches correct?
-            $self->PutModule("tpye" . $type.":".$release." - ".$reason);
-
-            # Nuke
-            $self->changeStatus(1, $release, $reason);
-      	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
         # UNNUKE
         } elsif ($type eq "UNNUKE") {
-            # Regex works for a lot of prechans but not for all.
-            # Maybe you have to customize this.
-            # Order: UNNUKE RELEASE REASON
 
-            my @array = split / /, $message;
-            pop @array; # get rid of the last array element on right
-            $message = join(' ', @array);
+              # Regex works for a lot of prechans but not for all.
+              # Maybe you have to customize this.
+              # Order: UNNUKE RELEASE REASON
+
+              my @array = split / /, $message;
+              pop @array; # get rid of the last array element on right
+              $message = join(' ', @array);
+  	          $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
+              # Get Regex Matches
+              my $release = $1;
+              my $reason = $2;
+              # DEBUG -> are all the matches correct?
+              $self->PutModule("type ".$type.": ".$release." - ".$reason);
+              # Unnuke
+              $self->changeStatus(2, $release, $reason);
+  	          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
 
 
-	          $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
-            # Get Regex Matches
-            my $release = $1;
-            my $reason = $2;
-
-            # DEBUG -> are all the matches correct?
-            $self->PutModule("type ".$type.": ".$release." - ".$reason);
-
-            # Unnuke
-            $self->changeStatus(2, $release, $reason);
-	          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
         # DELPRE
         } elsif ($type eq "DELPRE") {
-            # Regex works for a lot of prechans but not for all.
-            # Maybe you have to customize this.
-            # Order: DELPRE RELEASE REASON
-
-            my @array = split / /, $message;
-	          pop @array; # get rid of the last array element on right
-            $message = join(' ', @array);
-
-
-            $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
-            # Get Regex Matches
-            my $release = $1;
-            my $reason = $2;
-
-            # DEBUG -> are all the matches correct?
-            $self->PutModule($type.": ".$release." - ".$reason);
-
-            # Delpre
-            $self->changeStatus(3, $release, $reason);
- 	          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+              # Regex works for a lot of prechans but not for all.
+              # Maybe you have to customize this.
+              # Order: DELPRE RELEASE REASON
+              my @array = split / /, $message;
+        	    pop @array; # get rid of the last array element on right
+              $message = join(' ', @array);
+              $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
+              # Get Regex Matches
+              my $release = $1;
+              my $reason = $2;
+              # DEBUG -> are all the matches correct?
+              $self->PutModule($type.": ".$release." - ".$reason);
+              # Delpre
+              $self->changeStatus(3, $release, $reason);
+         	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
 
         # UNDELPRE
         } elsif ($type eq "UNDELPRE") {
-            # Regex works for a lot of prechans but not for all.
-            # Maybe you have to customize this.
-            # Order: UNDELPRE RELEASE REASON
-
-            my @array = split / /, $message;
-            pop @array; # get rid of the last array element on right
-            $message = join(' ', @array);
-
-
-            $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
-            # Get Regex Matches
-            my $release = $1;
-            my $reason = $2;
-
-            # DEBUG -> are all the matches correct?
-            $self->PutModule($type.": ".$release." - ".$reason);
-
-            # Undelpre
-            $self->changeStatus(4, $release, $reason);
-            $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
-        # GENRE
-        } elseif($type eq "GN") {
-          my @array = split / /, $message;
-          pop @array; # get rid of the last array element on right
-          $message = join(' ', @array);
-
-
-          $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
-          # Get Regex Matches
-          my $release = $1;
-          my $genre = $2;
-          # DEBUG -> are all the matches correct?
-          $self->PutModule($type.": ".$release." - ".$reason);
-
-          # Undelpre
-          $self->changeStatus(4, $release, $reason);
-          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+              # Regex works for a lot of prechans but not for all.
+              # Maybe you have to customize this.
+              # Order: UNDELPRE RELEASE REASON
+              my @array = split / /, $message;
+              pop @array; # get rid of the last array element on right
+              $message = join(' ', @array);
+              $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
+              # Get Regex Matches
+              my $release = $1;
+              my $reason = $2;
+              # DEBUG -> are all the matches correct?
+              $self->PutModule($type.": ".$release." - ".$reason);
+              # Undelpre
+              $self->changeStatus(4, $release, $reason);
+              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
         }
     }
-
     return $ZNC::CONTINUE;
 }
-
 ##
 # PreBot functions
 ##
-
 # Add Pre
 # Params (pretime, release, section, group)
 sub addPre {
     my $self = shift;
-
     # get attribute values
     my ($pretime, $release, $section, $group) = @_;
-
     # DEBUG -> check if the variables are correct
     # $self->PutModule("Time: ".$pretime." - RLS: ".$release." - Section: ".$section." - Group: ".$group);
-
     # Connect to Database
-    my $dbh = DBI->connect("DBI:mysql:database=$DB_NAME;host=$DB_HOST", $DB_USER, $DB_PASSWD)
-        or die "Couldn't connect to database: " . DBI->errstr;
+    my $dbh = $self->getDBI();
 
     # Set Query -> Add release
     my $query = "INSERT INTO ".$DB_TABLE." (`".$COL_PRETIME."`, `".$COL_RELEASE."`, `".$COL_SECTION."`, `".$COL_GROUP."`) VALUES( ?, ?, ?, ? );";
-
     # Execute Query
     $dbh->do($query, undef, $pretime, $release, $section, $group) or die $dbh->errstr;
 
     # Disconnect Database
     $dbh->disconnect();
 
-
 }
-
 # Info
 # Params (release, files, size)
 sub addInfo {
@@ -262,20 +312,15 @@ sub addInfo {
 
     # get attribute values
     my ($release, $files, $size) = @_;
-
     # DEBUG -> check if the variables are correct
     # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
-
     # Connect to Database
-    my $dbh = DBI->connect("DBI:mysql:database=$DB_NAME;host=$DB_HOST", $DB_USER, $DB_PASSWD)
-        or die "Couldn't connect to database: " . DBI->errstr;
+    my $dbh = $self->getDBI();
 
     # Set Query -> Add Release Info
     my $query = "UPDATE ".$DB_TABLE." SET `".$COL_FILES."` = ? , `".$COL_SIZE."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
-
     # Execute Query
     $dbh->do($query, undef, $files, $size, $release) or die $dbh->errstr;
-
     # Disconnect Database
     $dbh->disconnect();
 }
@@ -283,42 +328,92 @@ sub addInfo {
 # Genre
 # Params (release, genre)
 sub addGenre {
-  my $self = shift;
+    my $self = shift;
 
-  # get attribute values
-  my ($release, $genre) = @_;
+    # get attribute values
+    my ($release, $genre) = @_;
+    # DEBUG -> check if the variables are correct
+    # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
+    # Connect to Database
+    my $dbh = $self->getDBI();
 
-  # DEBUG -> check if the variables are correct
-  # $self->PutModule(.$release." - Genre: ".$genre);
+    # Set Query -> Add Release Info
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_GENRE."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
+    print "\nzzz$query\n";
+    # Execute Query
+    $dbh->do($query, undef, $genre, $release) or die $dbh->errstr;
+    # Disconnect Database
+    $dbh->disconnect();
+}
+# Url
+# Params (release, url)
+sub addUrl {
+    my $self = shift;
 
-  # Connect to Database
-  my $dbh = DBI->connect("DBI:mysql:database=$DB_NAME;host=$DB_HOST", $DB_USER, $DB_PASSWD)
-      or die "Couldn't connect to database: " . DBI->errstr;
+    # get attribute values
+    my ($release, $url) = @_;
+    # DEBUG -> check if the variables are correct
+    # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
+    # Connect to Database
+    my $dbh = $self->getDBI();
 
-  # Set Query -> Add Release Genre
-  my $query = "UPDATE ".$DB_TABLE." SET `".$COL_GENRE."` = ? WHERE `".$COL_RELEASE."` LIKE ?;";
+    # Set Query -> Add Release Info
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_URL."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
+    print "\nzzz$query\n";
+    # Execute Query
+    $dbh->do($query, undef, $url, $release) or die $dbh->errstr;
+    # Disconnect Database
+    $dbh->disconnect();
+}
 
-  #$self->PutModule($query);
+# Mp3info
+# Params (release, mp3info)
+sub addMp3info {
+    my $self = shift;
 
-  # Execute Query
-  $dbh->do($query, undef, $genre) or die $dbh->errstr;
+    # get attribute values
+    my ($release, $mp3info) = @_;
+    # DEBUG -> check if the variables are correct
+    # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
+    # Connect to Database
+    my $dbh = $self->getDBI();
 
-  #debug mysql
-  ($sql_update_result) = $dbh->fetchrow;
+    # Set Query -> Add Release Info
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_MP3INFO."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
+    print "\nzzz$query\n";
+    # Execute Query
+    $dbh->do($query, undef, $mp3info, $release) or die $dbh->errstr;
+    # Disconnect Database
+    $dbh->disconnect();
+}
 
-  #$self->PutModule("WHAT: " . $sql_update_result);
-  # Disconnect Database
-  $dbh->disconnect();
+# Videoinfo
+# Params (release, mp3info)
+sub addVideoinfo {
+    my $self = shift;
+
+    # get attribute values
+    my ($release, $videoinfo) = @_;
+    # DEBUG -> check if the variables are correct
+    # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
+    # Connect to Database
+    my $dbh = $self->getDBI();
+
+    # Set Query -> Add Release Info
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_VIDEOINFO."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
+    print "\nzzz$query\n";
+    # Execute Query
+    $dbh->do($query, undef, $videoinfo, $release) or die $dbh->errstr;
+    # Disconnect Database
+    $dbh->disconnect();
 }
 
 # Nuke, Unnuke, Delpre, Undelpre
 # Params (status, release, reason)
 sub changeStatus {
     my $self = shift;
-
     # get attribute values
     my ($status, $release, $reason) = @_;
-
     # DEBUG -> check if the variables are correct
     my $type;
     $type = "nuke" if ($status == 1);
@@ -326,26 +421,38 @@ sub changeStatus {
     $type = "delpre" if ($status == 3);
     $type = "undelpre" if ($status == 4);
     #$self->PutModule("Type: " .$type." - Release: ".$release." - Reason: ".$reason);
-
     # Connect to Database
-    my $dbh = DBI->connect("DBI:mysql:database=$DB_NAME;host=$DB_HOST", $DB_USER, $DB_PASSWD)
-        or die "Couldn't connect to database: " . DBI->errstr;
+    my $dbh = $self->getDBI();
 
     # Set Query -> Change release status
     # 0:pre; 1:nuked; 2:unnuked; 3:delpred; 4:undelpred;
     my $query = "UPDATE ".$DB_TABLE." SET `".$COL_STATUS."` = ? , `".$COL_REASON."` = ? WHERE `".$COL_RELEASE."` LIKE ?;";
 
     #$self->PutModule($query);
-
     # Execute Query
     $dbh->do($query, undef, $status, $reason, $release) or die $dbh->errstr;
 
     #debug mysql
     ($sql_update_result) = $dbh->fetchrow;
-
     #$self->PutModule("WHAT: " . $sql_update_result);
     # Disconnect Database
     $dbh->disconnect();
 }
 
+
+# Returns empty string if $1 is a dash ("-")
+sub returnEmptyIfDash {
+  $str = shift;
+  print "$str\n";
+  if($str eq "-"){
+    return "";
+  }
+
+  return $str;
+}
+
+sub getDBI {
+  return DBI->connect("DBI:mysql:database=$DB_NAME;host=$DB_HOST", $DB_USER, $DB_PASSWD)
+      or die "Couldn't connect to database: " . DBI->errstr;
+}
 1;
