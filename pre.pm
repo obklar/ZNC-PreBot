@@ -11,13 +11,6 @@ use POE::Component::IRC::Common; # Needed for stripping message colors and forma
 use DBI;                         # Needed for DB connection
 use experimental 'smartmatch';   # Smartmatch (Regex) support for newer perl versions
 
-# (My)SQL settings
-my $DB_NAME     = 'db';      # DB name
-my $DB_TABLE    = 'table';   # TABLE name
-my $DB_HOST     = 'host';   # DB host
-my $DB_USER     = 'dbuser';      # DB user
-my $DB_PASSWD   = 'dbpassword';      # DB user passwd
-
 # DB Columns
 my $COL_PRETIME = 'pretime';     # pre timestamp
 my $COL_RELEASE = 'release';     # release name
@@ -26,13 +19,18 @@ my $COL_FILES   = 'files';       # number of files
 my $COL_SIZE    = 'size';        # release size
 my $COL_STATUS  = 'status';      # 0:pre; 1:nuked; 2:unnuked; 3:delpred; 4:undelpred;
 my $COL_REASON  = 'reason';      # reason for nuke/unnuke/delpre/undelpre
+my $COL_NETWORK = 'network';     # network from which we got the nuke/whatever reason
 my $COL_GROUP   = 'group';       # groupname
 my $COL_GENRE   = 'genre';
 my $COL_URL     = 'url';
 my $COL_MP3INFO = 'mp3info';
 my $COL_VIDEOINFO = 'videoinfo';
 
-my $ANNOUNCE_NETWORK = 'ime';
+my $ANNOUNCE_NETWORK = 'criten';
+my $ANNOUNCE_CHANNEL = '#pre-test';
+
+# ONLY CHANGES THIS IF YOU KNOW WHAT YOU DO!
+my %STATUSTYPES = ( "NUKE" => 1, "MODNUKE" => 1, "UNNUKE" => 2, "DELPRE" => 3, "UNDELPRE" => 4);
 
 # Module only accessible for users.
 # Comment the next line if you want to make it global accessible
@@ -59,16 +57,15 @@ sub OnChanMsg {
     # DEBUG -> everything is working till here so go on and send me the message
     # $self->PutModule("[".$chan->GetName."] <".$nick->GetNick."> ".$message);
 
-    # Match the first word (or at least the first letter) of the message
-    # If it's a prechan it should match 100%, with all types of chars before and after the first word.
-    # like [](){}- or whitespace or nothing
-    # Need regex explanation? -> http://www.comp.leeds.ac.uk/Perl/matching.html
-    my $match = $message ~~ m/^\W*(\w+)\W*/;
+    # Split message into words (without dash)
+    my @splitted_message = split / /, $message;
 
-    # Put the word in the variable
-    my $type = uc($1);
-    #$self->PutModule($type);
-    if ($match) {
+    # Check if message starts with a "!""
+    my $match = substr($splitted_message[0], 0, 1) eq "!";
+
+    if($match){
+        # Get the type (it's the command), uppercased!
+        $type = uc(substr($splitted_message[0], 1));
         # Compare different types of announces,
         # assuming that there are common types like pre, (mod)nuke, unnuke, delpre, undelpre
 
@@ -76,52 +73,57 @@ sub OnChanMsg {
         if ($type eq "ADDPRE" || $type eq "SITEPRE") {
               # Regex works for a lot of prechans but not for all.
               # Maybe you have to change this.
-              # Order: PRE SECTION RELEASE
-              $match = $message ~~ m/^\W*\w+\W+(\w+-?\w+)\W+(\w.+?)\W*$/;
+              # Order: ADDPRE/SITEPRE RELEASE SECTION
 
-              # Get Regex matches
+              #Pretime is now
               my $pretime = time();
-              my $section = $1;
-              my $release = $2;
-              # Get Group from release
-              $match = $release ~~ m/-(\w+)$/;
-              my $group = $1;
+
+              my $release = $splitted_message[1];
+              my $section = $splitted_message[2];
+
+
+              my $group = getGroupFromRelease($release);
 
               # DEBUG -> are all the matches correct?
-              #$self->PutModule($type.": ".$section." > ".$release." - ".$group);
+              $self->PutModule($type.": ".$section." > ".$release." - ".$group);
 
               # Add Pre
               $self->addPre($pretime, $release, $section, $group);
-              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+              # Announce Pre
+              $self->announcePre($release, $section);
+
         # ADDOLD
         } elsif ($type eq "ADDOLD") {
               print $message;
-              my @array = split / /, $message;
-              print "@array\n";
-              my $release = returnEmptyIfDash($array[1]);
-              my $section = returnEmptyIfDash($array[2]);
-              my $pretime = returnEmptyIfDash($array[3]);
-              my $size    = returnEmptyIfDash($array[4]);
-              my $files   = returnEmptyIfDash($array[5]);
-              my $genre   = returnEmptyIfDash($array[6]);
-              my $additional = returnEmptyIfDash($array[7]);
+              my $release = returnEmptyIfDash($splitted_message[1]);
+              my $section = returnEmptyIfDash($splitted_message[2]);
+              my $pretime = returnEmptyIfDash($splitted_message[3]);
+              my $size    = returnEmptyIfDash($splitted_message[4]);
+              my $files   = returnEmptyIfDash($splitted_message[5]);
+              my $genre   = returnEmptyIfDash($splitted_message[6]);
+              my $reason  = returnEmptyIfDash($splitted_message[7]);
+              my $network = returnEmptyIfDash(join(' ',  splice(@splitted_message, 7))); # network contains maybe whitespaces, so we want everything to the end
 
-              # Get Group from release
-              $match = $release ~~ m/-(\w+)$/;
-              my $group = $1;
+              my $group = getGroupFromRelease($release);
+
               print "\nxxx$release\n";
+
               # DEBUG -> are all the matches correct?
-              #$self->PutModule($type.": ".$section." > ".$release." - ".$group);
+              $self->PutModule("$type : $section - $release - $group - $pretime - $size - $files - $genre - $reason - $network");
 
               # Add Pre
               $self->addPre($pretime, $release, $section, $group);
-              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
 
               # Add Info
               $self->addInfo($release, $files, $size);
 
               # Add genre
               $self->addGenre($release, $genre);
+
+              # Announce (we handle it like a pre, maybe you want to do it differently)
+              $self->announcePre($release, $section);
+
 
         # INFO
         } elsif ($type eq "INFO") {
@@ -145,7 +147,7 @@ sub OnChanMsg {
 
               # Add Info
               $self->addInfo($release, $files, $size);
-        	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+        	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
 
         # GENRE
         } elsif ($type eq "GN") {
@@ -159,7 +161,7 @@ sub OnChanMsg {
 
               # Add Info
               $self->addGenre($release, $genre);
-        	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+        	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
 
         # ADDURL
         } elsif ($type eq "ADDURL") {
@@ -173,7 +175,7 @@ sub OnChanMsg {
 
               # Add Info
               $self->addUrl($release, $url);
-              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
 
         # ADDMP3INFO
         } elsif( $type eq "MP3INFO") {
@@ -187,7 +189,7 @@ sub OnChanMsg {
 
           # Add Info
           $self->addMp3info($release, $mp3info);
-          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
 
         # ADDVIDEOINFO
         } elsif( $type eq "VIDEOINFO") {
@@ -201,83 +203,26 @@ sub OnChanMsg {
 
           # Add Info
           $self->addVideoinfo($release, $videoinfo);
-          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
 
-        # NUKE
-        } elsif ($type ~~ m/^(NUKE|MODNUKE)/) {
-              my @array = split / /, $message;
-        	    pop @array; # get rid of the last array element on right
-        	    $message = join(' ', @array);
+        # NUKE/MODNUKE/UNNUKE/DELPRE/UNDELPRE (Status Change)
+        } elsif (exists $STATUSTYPES{$type}) {
+              # Order: NUKE RELEASE REASON NUKENET
 
-    	        # Regex works for a lot of prechans but not for all.
-              # Maybe you have to customize this.
-              # Order: NUKE RELEASE REASON
-              $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
-              # Get Regex Matches
-              my $release = $1;
-              my $reason = $2;
+              my $release = $splitted_message[1];
+              my $reason = $splitted_message[2];
+              my $network = $splitted_message[3];
+
+              my $status = $STATUSTYPES{$type};
+
               # DEBUG -> are all the matches correct?
-              $self->PutModule("tpye" . $type.":".$release." - ".$reason);
+              $self->PutModule("tpye" . $type.":".$release." - ".$reason." network:".$network);
               # Nuke
-              $self->changeStatus(1, $release, $reason);
-    	        $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
+              $self->changeStatus($release, $status, $reason, $network);
 
-        # UNNUKE
-        } elsif ($type eq "UNNUKE") {
+              # Announce Nuke
+    	        $self->announceStatusChange($release, $type, $reason, $network);
 
-              # Regex works for a lot of prechans but not for all.
-              # Maybe you have to customize this.
-              # Order: UNNUKE RELEASE REASON
-
-              my @array = split / /, $message;
-              pop @array; # get rid of the last array element on right
-              $message = join(' ', @array);
-  	          $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
-              # Get Regex Matches
-              my $release = $1;
-              my $reason = $2;
-              # DEBUG -> are all the matches correct?
-              $self->PutModule("type ".$type.": ".$release." - ".$reason);
-              # Unnuke
-              $self->changeStatus(2, $release, $reason);
-  	          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
-
-
-        # DELPRE
-        } elsif ($type eq "DELPRE") {
-              # Regex works for a lot of prechans but not for all.
-              # Maybe you have to customize this.
-              # Order: DELPRE RELEASE REASON
-              my @array = split / /, $message;
-        	    pop @array; # get rid of the last array element on right
-              $message = join(' ', @array);
-              $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
-              # Get Regex Matches
-              my $release = $1;
-              my $reason = $2;
-              # DEBUG -> are all the matches correct?
-              $self->PutModule($type.": ".$release." - ".$reason);
-              # Delpre
-              $self->changeStatus(3, $release, $reason);
-         	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
-
-        # UNDELPRE
-        } elsif ($type eq "UNDELPRE") {
-              # Regex works for a lot of prechans but not for all.
-              # Maybe you have to customize this.
-              # Order: UNDELPRE RELEASE REASON
-              my @array = split / /, $message;
-              pop @array; # get rid of the last array element on right
-              $message = join(' ', @array);
-              $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\w[\w|\.|-]*)\W*$/;
-              # Get Regex Matches
-              my $release = $1;
-              my $reason = $2;
-              # DEBUG -> are all the matches correct?
-              $self->PutModule($type.": ".$release." - ".$reason);
-              # Undelpre
-              $self->changeStatus(4, $release, $reason);
-              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG #pre :" . $message);
         }
     }
     return $ZNC::CONTINUE;
@@ -336,6 +281,10 @@ sub addGenre {
     # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
     # Connect to Database
     my $dbh = $self->getDBI();
+sub getGroupFromRelease {
+  $match = $1 ~~ m/-(\w+)$/;
+  return $1;
+}
 
     # Set Query -> Add Release Info
     my $query = "UPDATE ".$DB_TABLE." SET `".$COL_GENRE."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
@@ -409,31 +358,30 @@ sub addVideoinfo {
 }
 
 # Nuke, Unnuke, Delpre, Undelpre
-# Params (status, release, reason)
+# Params (release, status, reason, network)
 sub changeStatus {
     my $self = shift;
     # get attribute values
-    my ($status, $release, $reason) = @_;
+    my ($release, $status, $reason , $network) = @_;
     # DEBUG -> check if the variables are correct
-    my $type;
-    $type = "nuke" if ($status == 1);
-    $type = "unnuke" if ($status == 2);
-    $type = "delpre" if ($status == 3);
-    $type = "undelpre" if ($status == 4);
     #$self->PutModule("Type: " .$type." - Release: ".$release." - Reason: ".$reason);
+
+    my $type = $self->statusToType($status);
+    $self->PutModule("$type $release - Reason: $reason ($network)");
+
     # Connect to Database
     my $dbh = $self->getDBI();
 
     # Set Query -> Change release status
     # 0:pre; 1:nuked; 2:unnuked; 3:delpred; 4:undelpred;
-    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_STATUS."` = ? , `".$COL_REASON."` = ? WHERE `".$COL_RELEASE."` LIKE ?;";
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_STATUS."` = ? , `".$COL_REASON."` = ?, `".$COL_NETWORK."` = ? WHERE `".$COL_RELEASE."` LIKE ?;";
 
     #$self->PutModule($query);
     # Execute Query
-    $dbh->do($query, undef, $status, $reason, $release) or die $dbh->errstr;
+    $dbh->do($query, undef, $status, $reason, $network, $release) or die $dbh->errstr;
 
     #debug mysql
-    ($sql_update_result) = $dbh->fetchrow;
+    #($sql_update_result) = $dbh->fetchrow;
     #$self->PutModule("WHAT: " . $sql_update_result);
     # Disconnect Database
     $dbh->disconnect();
@@ -441,6 +389,7 @@ sub changeStatus {
 
 
 # Returns empty string if $1 is a dash ("-")
+# Params: (string)
 sub returnEmptyIfDash {
   $str = shift;
   print "$str\n";
@@ -451,8 +400,58 @@ sub returnEmptyIfDash {
   return $str;
 }
 
+# Get a database connection
 sub getDBI {
-  return DBI->connect("DBI:mysql:database=$DB_NAME;host=$DB_HOST", $DB_USER, $DB_PASSWD)
-      or die "Couldn't connect to database: " . DBI->errstr;
+  return DBI->connect("DBI:mysql:database=$DB_NAME;host=$DB_HOST", $DB_USER, $DB_PASSWD) or die "Couldn't connect to database: " . DBI->errstr;
 }
+
+# Extract the groupname of a release/dirname
+# Params: (release)
+sub getGroupFromRelease {
+  my $release = shift;
+  return substr($release, rindex($release, "-")+1);
+}
+
+#announce a pre
+# Params: (release, section)
+sub announcePre {
+  my $self = shift;
+  my ($release, $section) = @_;
+  $self->sendAnnounceMessage("[PRE] [$section] - $release");
+
+}
+
+#announce a status Change
+# Params: (release, status, reason, network)
+sub announceStatusChange {
+  my $self = shift;
+  my ($release, $type, $reason, $network) = @_;
+  $self->sendAnnounceMessage("[$type] - $release - $reason - $network");
+}
+
+# Send a message to announce channel
+# Params: (message)
+sub sendAnnounceMessage {
+  my $self = shift;
+  my $message = shift;
+  $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :".$message);
+}
+
+# Convert Status (integer) to String (type)
+# Params: (status)
+# Return: Type (String)
+sub statusToType {
+  my $status = shift;
+  my %rstatustypes = reverse %STATUSTYPES;
+  return $rstatustypes{$status};
+}
+
+# Convert Status (integer) to String (type)
+# Params: (status)
+# Return: Type (String)
+sub typeToStatus {
+  my $type = shift;
+  return $STATUSTYPES{$type};
+}
+
 1;

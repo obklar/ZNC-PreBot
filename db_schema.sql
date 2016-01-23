@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS `releases` (
   `size` decimal(10,2) NOT NULL DEFAULT '0.00',
   `status` int(1) NOT NULL DEFAULT '0',
   `reason` varchar(255) NOT NULL DEFAULT '',
+  `network` varchar(30) NOT NULL DEFAULT '',
   `group` varchar(30) NOT NULL DEFAULT '',
   `genre` varchar(30) NOT NULL DEFAULT '',
   `url` varchar(255) NOT NULL DEFAULT '',
