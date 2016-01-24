@@ -5,6 +5,7 @@
 ## #
 
 package pre;
+use Switch;
 use base 'ZNC::Module';
 
 use POE::Component::IRC::Common; # Needed for stripping message colors and formatting
@@ -21,13 +22,14 @@ my $COL_STATUS  = 'status';      # 0:pre; 1:nuked; 2:unnuked; 3:delpred; 4:undel
 my $COL_REASON  = 'reason';      # reason for nuke/unnuke/delpre/undelpre
 my $COL_NETWORK = 'network';     # network from which we got the nuke/whatever reason
 my $COL_GROUP   = 'group';       # groupname
-my $COL_GENRE   = 'genre';
-my $COL_URL     = 'url';
-my $COL_MP3INFO = 'mp3info';
-my $COL_VIDEOINFO = 'videoinfo';
+my $COL_GENRE   = 'genre';       # genre of product
+my $COL_URL     = 'url';         # productlink or something similiar
+my $COL_MP3INFO = 'mp3info';     # mp3info
+my $COL_VIDEOINFO = 'videoinfo'; # videoinfo
 
-my $ANNOUNCE_NETWORK = 'criten';
-my $ANNOUNCE_CHANNEL = '#pre-test';
+# If you want to do more advanced announce stuff, have a look at the announceX subs.
+my $ANNOUNCE_NETWORK = 'puthereyournetworkname';
+my $ANNOUNCE_CHANNEL = '#pre';
 
 # ONLY CHANGES THIS IF YOU KNOW WHAT YOU DO!
 my %STATUSTYPES = ( "NUKE" => 1, "MODNUKE" => 1, "UNNUKE" => 2, "DELPRE" => 3, "UNDELPRE" => 4);
@@ -113,7 +115,6 @@ sub OnChanMsg {
 
               # Add Pre
               $self->addPre($pretime, $release, $section, $group);
-              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
 
               # Add Info
               $self->addInfo($release, $files, $size);
@@ -122,89 +123,47 @@ sub OnChanMsg {
               $self->addGenre($release, $genre);
 
               # Announce (we handle it like a pre, maybe you want to do it differently)
-              $self->announcePre($release, $section);
-
+              $self->announceAddOld($release, $section, $pretime, $size, $files, $genre, $reason, $network);
 
         # INFO
         } elsif ($type eq "INFO") {
-              # Regex works for a lot of prechans but not for all.
-              # Maybe you have to change this.
-              # Order: INFO RELEASE 1 FILES 1 SIZE
-        	    $message =~ s/[[\]]//g;
-        	    my @array1 = split ' ',   $message;
-        	    #$self->PutModule("message: " . $message);
-        	    $match = $message ~~ m/^\W*\w+\W*(\w.+?)\W*(\d+\s\w+?)\W*(\d.+?)\W*$/;
+              # Order: INFO RELEASE FILES SIZE
 
-        	    # Get Regex Matches
-              my $release = $array1[1];
-              my $files = $array1[2];
+              my $release = $splitted_message[1];
+              my $files = $splitted_message[2];
         	    $files =~ s/F//g;
-              my $size = $array1[3];
+              my $size = $splitted_message[3];
         	    $size =~ s/MB//g;
 
               # DEBUG -> are all the matches correct?
-              $self->PutModule("Atype: " . $type. " release: ".$release." files: ".$files." - size:".$size);
+              $self->PutModule($type. " release: ".$release." files: ".$files." - size:".$size);
 
               # Add Info
               $self->addInfo($release, $files, $size);
-        	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
 
-        # GENRE
-        } elsif ($type eq "GN") {
-              my @array = split / /, $message;
+              # Announce
+              $self->announceInfo($release, $files, $size);
 
-              my $release = $array[1];
-              my $genre   = $array[2];
-
+        # GENRE/ADDURL/ADDMP3INFO/ADDVIDEOINFO
+        } elsif ($type ~~ ["GENRE", "ADDURL", "ADDMP3INFO", "ADDVIDEOINFO"]) {
+              my $release = $splitted_message[1];
+              my $addinfo  =  join(' ',  splice(@splitted_message, 2));
               # DEBUG -> are all the matches correct?
-              $self->PutModule("Genre: " . $type. " release: ".$release." genre: ".$genre);
+              $self->PutModule($type. " release: ".$release." info: ".$addinfo);
 
-              # Add Info
-              $self->addGenre($release, $genre);
-        	    $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
-
-        # ADDURL
-        } elsif ($type eq "ADDURL") {
-              my @array = split / /, $message;
-
-              my $release = $array[1];
-              my $url   = $array[2];
-
-              # DEBUG -> are all the matches correct?
-              $self->PutModule("Url: " . $type. " release: ".$release." url: ".$url);
-
-              # Add Info
-              $self->addUrl($release, $url);
-              $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
-
-        # ADDMP3INFO
-        } elsif( $type eq "MP3INFO") {
-          my @array = split / /, $message;
-
-          my $release = $array[1];
-          my $mp3info   = $array[2];
-
-          # DEBUG -> are all the matches correct?
-          $self->PutModule("MP3Info: " . $type. " release: ".$release." mp3info: ".$mp3info);
-
-          # Add Info
-          $self->addMp3info($release, $mp3info);
-          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
-
-        # ADDVIDEOINFO
-        } elsif( $type eq "VIDEOINFO") {
-          my @array = split / /, $message;
-
-          my $release = $array[1];
-          my $videoinfo   = $array[2];
-
-          # DEBUG -> are all the matches correct?
-          $self->PutModule("VideoInfo: " . $type. " release: ".$release." videoinfo: ".$videoinfo);
-
-          # Add Info
-          $self->addVideoinfo($release, $videoinfo);
-          $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :" . $message);
-
+              if($type eq "GENRE"){
+                $self->addGenre($release, $addinfo);
+                $self->announceGenre($release, $addinfo);
+              }elsif($type eq "ADDURL"){
+                $self->addUrl($release, $addinfo);
+                $self->announceAddUrl($release, $addinfo);
+              }elsif($type eq "ADDMP3INFO"){
+                $self->addMp3info($release, $addinfo);
+                $self->announceAddMp3Info($release, $addinfo);
+              }elsif($type eq "ADDVIDEOINFO"){
+                $self->addVideoinfo($release, $addinfo);
+                $self->announceAddVideoInfo($release, $addinfo);
+              }
         # NUKE/MODNUKE/UNNUKE/DELPRE/UNDELPRE (Status Change)
         } elsif (exists $STATUSTYPES{$type}) {
               # Order: NUKE RELEASE REASON NUKENET
@@ -412,23 +371,6 @@ sub getGroupFromRelease {
   return substr($release, rindex($release, "-")+1);
 }
 
-#announce a pre
-# Params: (release, section)
-sub announcePre {
-  my $self = shift;
-  my ($release, $section) = @_;
-  $self->sendAnnounceMessage("[PRE] [$section] - $release");
-
-}
-
-#announce a status Change
-# Params: (release, status, reason, network)
-sub announceStatusChange {
-  my $self = shift;
-  my ($release, $type, $reason, $network) = @_;
-  $self->sendAnnounceMessage("[$type] - $release - $reason - $network");
-}
-
 # Send a message to announce channel
 # Params: (message)
 sub sendAnnounceMessage {
@@ -453,5 +395,76 @@ sub typeToStatus {
   my $type = shift;
   return $STATUSTYPES{$type};
 }
+
+###
+# ANNNOUNCE SUBS
+###
+
+
+#announce a pre
+# Params: (release, section)
+sub announcePre {
+  my $self = shift;
+  my ($release, $section) = @_;
+  $self->sendAnnounceMessage("[PRE] [$section] - $release");
+
+}
+
+#announce a old pre (currently we just do a announcePre, but maybe we want to do more?)
+# Params: (release, section, pretime, size, files, genre, reason, network)
+sub announceAddOld {
+  my $self = shift;
+  my ($release, $section, $pretime, $size, $files, $genre, $reason, $network) = @_;
+  $self->announcePre($release, $section);
+}
+
+#announce a status Change
+# Params: (release, status, reason, network)
+sub announceStatusChange {
+  my $self = shift;
+  my ($release, $type, $reason, $network) = @_;
+  $self->sendAnnounceMessage("[$type] - $release - $reason - $network");
+}
+
+# announce info, in the moment we do nothing, but maybe you want to do something?
+# Params: (release, files, size)
+sub announceInfo {
+  return; # Uncomment if you want to do stuff with this
+  my $self = shift;
+  my ($release, $files, $size) = @_;
+
+}
+
+# announce genre, in the moment we do nuffin
+# Params: (release, genre)
+sub announceGenre {
+  return; # Uncomment if you want to do stuff with this
+  my $self = shift;
+  my ($release, $genre) = @_;
+}
+
+# announce addurl, in the moment we do nuffin
+# Params: (release, url)
+sub announceAddUrl {
+  return; # Uncomment if you want to do stuff with this
+  my $self = shift;
+  my ($release, $url) = @_;
+}
+# announce addmp3info, in the moment we do nuffin
+# Params: (release, mp3info)
+sub announceAddMp3Info {
+  return; # Uncomment if you want to do stuff with this
+  my $self = shift;
+  my ($release, $mp3info) = @_;
+}
+
+# announce addvideoinfo, in the moment we do nuffin
+# Params: (release, videoinfo)
+sub announceAddVideoInfo {
+  return; # Uncomment if you want to do stuff with this
+  my $self = shift;
+  my ($release, $videoinfo) = @_;
+}
+
 
 1;
