@@ -1,3 +1,11 @@
+package mysettings;
+# (My)SQL settings
+my $DB_NAME     = 'db';      # DB name
+my $DB_TABLE    = 'table';   # TABLE name
+my $DB_HOST     = 'host';   # DB host
+my $DB_USER     = 'dbuser';      # DB user
+my $DB_PASSWD   = 'dbpassword';      # DB user passwd
+
 # DB Columns
 my $COL_PRETIME = 'pretime';     # pre timestamp
 my $COL_RELEASE = 'release';     # release name

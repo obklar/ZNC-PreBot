@@ -5,6 +5,9 @@
 ## #
 
 package pre;
+push ( @INC,"modules");
+use lib mysettings;
+
 use Switch;
 use base 'ZNC::Module';
 
@@ -12,7 +15,7 @@ use POE::Component::IRC::Common; # Needed for stripping message colors and forma
 use DBI;                         # Needed for DB connection
 use experimental 'smartmatch';   # Smartmatch (Regex) support for newer perl versions
 
-use mysettings;
+
 
 # ONLY CHANGES THIS IF YOU KNOW WHAT YOU DO!
 my %STATUSTYPES = ( "NUKE" => 1, "MODNUKE" => 1, "UNNUKE" => 2, "DELPRE" => 3, "UNDELPRE" => 4);
