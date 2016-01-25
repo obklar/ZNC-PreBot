@@ -5,11 +5,32 @@
 ## #
 
 package pre;
-push ( @INC,"modules");
-use lib mysettings;
-
-use Switch;
 use base 'ZNC::Module';
+use File::Basename;
+use Config::IniFiles;
+my $cfg = Config::IniFiles->new( -file => dirname(__FILE__) . "/settings.ini" );
+
+my $DB_NAME = $cfg->val( 'settings', 'DB_NAME' );
+my $DB_TABLE = $cfg->val( 'settings', 'DB_TABLE' );
+my $DB_HOST = $cfg->val( 'settings', 'DB_HOST' );
+my $DB_USER = $cfg->val( 'settings', 'DB_USER' );
+my $DB_PASSWD = $cfg->val( 'settings', 'DB_PASSWD' );
+
+my $COL_PRETIME = $cfg->val( 'settings', 'COL_PRETIME' );
+my $COL_RELEASE = $cfg->val( 'settings', 'COL_' );
+my $COL_SECTION = $cfg->val( 'settings', 'COL_' );
+my $COL_FILES = $cfg->val( 'settings', 'COL_' );
+my $COL_SIZE = $cfg->val( 'settings', 'COL_' );
+my $COL_STATUS = $cfg->val( 'settings', 'COL_' );
+my $COL_REASON = $cfg->val( 'settings', 'COL_' );
+my $COL_NETWORK = $cfg->val( 'settings', 'COL_' );
+my $COL_GROUP = $cfg->val( 'settings', 'COL_' );
+my $COL_GENRE = $cfg->val( 'settings', 'COL_' );
+my $COL_URL = $cfg->val( 'settings', 'COL_' );
+my $COL_MP3INFO = $cfg->val( 'settings', 'COL_' );
+my $COL_VIDEOINFO = $cfg->val( 'settings', 'COL_' );
+my $ANNOUNCE_NETWORK = $cfg->val( 'settings', 'ANNOUNCE_NETWORK' );
+my $ANNOUNCE_CHANNEL = $cfg->val( 'settings', 'ANNOUNCE_CHANNEL' );
 
 use POE::Component::IRC::Common; # Needed for stripping message colors and formatting
 use DBI;                         # Needed for DB connection
@@ -43,7 +64,7 @@ sub OnChanMsg {
         $message = POE::Component::IRC::Common::strip_formatting($message);
     }
     # DEBUG -> everything is working till here so go on and send me the message
-    # $self->PutModule("[".$chan->GetName."] <".$nick->GetNick."> ".$message);
+    $self->PutModule("[".$chan->GetName."] <".$nick->GetNick."> ".$message);
 
     # Split message into words (without dash)
     my @splitted_message = split / /, $message;
@@ -189,6 +210,7 @@ sub addPre {
     # Set Query -> Add release
     my $query = "INSERT INTO ".$DB_TABLE." (`".$COL_PRETIME."`, `".$COL_RELEASE."`, `".$COL_SECTION."`, `".$COL_GROUP."`) VALUES( ?, ?, ?, ? );";
     # Execute Query
+    $self->PutModule($query);
     $dbh->do($query, undef, $pretime, $release, $section, $group) or die $dbh->errstr;
 
     # Disconnect Database
