@@ -61,7 +61,7 @@ cpanm DBD::mysql
 **1.** Download the *PreBot.pm* file to the ZNC modules directory
 ```powershell
 cd ~/.znc/modules
-wget https://raw.githubusercontent.com/m4luc0/ZNC-PreBot/master/PreBot.pm
+wget https://raw.githubusercontent.com/shins5kai/ZNC-PreBot/master/PreBot.pm
 ```
 **2.** Open the file with your favorite text editor and change the MySQL DB settings.
 
